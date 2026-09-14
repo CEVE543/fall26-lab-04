@@ -1,0 +1,178 @@
+---
+title: "Lab 4: Extreme value theory: fitting a GEV and testing its sensitivity"
+week: 4
+module: 2
+date: 2026-09-18
+due:
+  - label: "Lab 4 due"
+    date: 2026-09-25
+status: "draft"
+release: "public"
+---
+
+In this lab you fit a GEV distribution to annual maximum storm surge at Sewells Point, VA using Turing, then test how the 100-year return level changes when you modify your modelling choices.
+The goal is not a single answer but a table that shows how much each choice matters.
+
+## Setup
+
+```{julia}
+#| solution: false
+#| output: false
+using Pkg
+lab_dir = dirname(@__FILE__)
+Pkg.activate(lab_dir)
+!isfile(joinpath(lab_dir, "Manifest.toml")) && Pkg.instantiate()
+```
+
+```{julia}
+#| solution: false
+#| output: false
+using CSV, CairoMakie, DataFrames, Distributions, LaTeXStrings
+using Printf, Random, Statistics, Turing
+Random.seed!(543)
+set_theme!(theme_minimal(); fontsize=16)
+colors = Makie.wong_colors()
+```
+
+## Data
+
+Annual maximum storm surge (feet above mean sea level) at Sewells Point, VA (NOAA gauge 8638610), 1928-2023.
+This is the same gauge from the week 1 EP curve.
+
+```{julia}
+#| solution: false
+annmax = CSV.read(joinpath(lab_dir, "sewells-point-annmax.csv"), DataFrame)
+y = annmax.lsl
+n = length(y)
+@printf("n = %d years, range %.2f to %.2f ft", n, minimum(y), maximum(y))
+```
+
+```{julia}
+#| solution: false
+fig = Figure(; size=(700, 300))
+ax = Axis(fig[1, 1]; xlabel="year", ylabel=L"\text{annual max surge (ft)}")
+scatter!(ax, annmax.year, y; color=colors[1], markersize=6)
+fig
+```
+
+## Writing a GEV model in Turing
+
+The GEV log-density for one observation $y$ given parameters $(\mu, \sigma, \xi)$ is
+
+$$
+\log f(y \mid \mu, \sigma, \xi) = -\log\sigma - \left(1 + \frac{1}{\xi}\right)\log v - v^{-1/\xi}
+$$
+
+where $v = 1 + \xi(y - \mu)/\sigma$ and $v$ must be positive.
+When $|\xi|$ is close to zero, the Gumbel limit applies: $\log f = -\log\sigma - z - e^{-z}$ with $z = (y - \mu)/\sigma$.
+
+The function below computes this, returning $-\infty$ when a parameter set puts an observation outside the support.
+
+```{julia}
+#| solution: false
+function gev_logpdf(y, μ, σ, ξ)
+    σ <= 0 && return -Inf
+    z = (y - μ) / σ
+    if abs(ξ) < 1e-7
+        return -log(σ) - z - exp(-z)
+    end
+    v = 1 + ξ * z
+    v <= 0 && return -Inf
+    return -log(σ) - (1 + 1 / ξ) * log(v) - v^(-1 / ξ)
+end
+```
+
+Now define the Turing model.
+The priors are weakly informative: centred on the sample moments and wide enough that the data dominate.
+
+```{julia}
+# Your code here
+```
+
+::: {.callout-note}
+We use `@addlogprob!` to add the log-density directly rather than writing `y[i] ~ SomeDistribution(...)`.
+This is because `Distributions.jl`'s `GeneralizedExtremeValue` throws an error when a parameter set puts an observation outside the support, but MCMC samplers routinely propose such parameter sets and need a $-\infty$ log-density instead of an exception.
+:::
+
+## Exercises
+
+For each exercise, run the model and fill in a row of the summary table at the end.
+Write 1-2 sentences explaining what changed and why.
+
+### Base model
+
+Fit the GEV model with the priors defined above.
+Run four chains of 2,000 samples each.
+
+```{julia}
+# Your code here
+```
+
+Compute the 50-year and 100-year return levels from each posterior draw and report the median and 95% credible interval.
+
+```{julia}
+# Your code here
+```
+
+### Changed priors
+
+Choose one of the following changes (or make up your own) and refit:
+
+- Tighten the prior on $\xi$ to `Normal(0.0, 0.10)` (strong belief that the tail is near Gumbel)
+- Shift the prior on $\mu$ to `Normal(mean(y) + 2, 5.0)` (prior centred above the sample mean)
+- Widen the prior on $\sigma$ to `Normal(std(y), 10.0)`
+
+State which change you made and why you chose it.
+
+```{julia}
+# Your code here
+```
+
+
+**Your answer:**
+
+### Drop the largest observation
+
+Remove the single largest annual maximum from the data and refit the base model.
+
+```{julia}
+# Your code here
+```
+
+```{julia}
+# Your code here
+```
+
+
+**Your answer:**
+
+### Gumbel model
+
+Fix $\xi = 0$ by removing the shape parameter.
+
+```{julia}
+# Your code here
+```
+
+```{julia}
+# Your code here
+```
+
+
+**Your answer:**
+
+## Summary table
+
+Fill in the table below from your results.
+
+| Model | 50-yr median | 50-yr 95% CI | 100-yr median | 100-yr 95% CI |
+| :--- | :--- | :--- | :--- | :--- |
+| Base GEV | | | | |
+| Changed prior: _____ | | | | |
+| Drop largest obs | | | | |
+| Gumbel ($\xi = 0$) | | | | |
+
+In 2-3 sentences, summarize the main pattern you see across the four rows.
+
+**Your answer:**
+
